@@ -8,9 +8,11 @@ Search, inspect, copy, and update entries from the [Nextcloud Passwords](https:/
 - Authorize through the official Nextcloud Login Flow v2 in the system browser. The Nextcloud account password is never entered in Wox.
 - Type `ncp connect` to authorize or replace this device's connection and `ncp disconnect` to revoke it.
 - Press Enter to copy the selected password.
+- Automatically rank entries by local copy frequency and most recent use. Search relevance still takes priority while typing.
+- Pin or unpin editable entries. Pinning uses the Nextcloud Passwords favorite field and syncs across devices.
 - Copy the username from the result action menu.
 - Inspect username, URL, notes, security status, and a masked password in the preview panel.
-- Explicitly reveal the password in the preview when needed.
+- Toggle the password between masked and plaintext display in the preview. Every new query starts hidden.
 - Edit label, username, password, URL, and notes. Updates retain the entry's existing encryption mode and use the latest server revision.
 - Supports server-side encryption and Passwords CSEv1 end-to-end encryption through the official `passwords-client` library.
 - Supports user-entered Passwords session 2FA codes. Request-based or push authentication methods currently require upstream client support.
@@ -29,6 +31,7 @@ Nextcloud generates a dedicated app password for this device during authorizatio
 - Passwords are decrypted only in the plugin process and are not written to disk by this plugin.
 - Search runs locally because encrypted label, username, and URL fields cannot be searched server-side.
 - Result metadata never contains plaintext passwords. The password is only sent to Wox when copying it or after the explicit reveal action.
+- Copy frequency and last-used time are stored locally as a hidden, device-specific Wox setting and are not synchronized to Nextcloud.
 - Login Flow credentials are stored as hidden, platform-specific Wox settings so every device receives a separate revocable app password and the token is not cloud-synced by this plugin.
 - Editing a password uses a blank **New password** field. Leave it blank to preserve the current password.
 

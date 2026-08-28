@@ -17,7 +17,9 @@ import {
   DETAIL_ICON,
   DISCONNECT_ICON,
   EDIT_ICON,
+  HIDE_ICON,
   PASSWORD_ICON,
+  PIN_ICON,
   UNLOCK_ICON,
   USER_ICON
 } from "./icons.js"
@@ -31,6 +33,7 @@ import {
   LoginFlowCredentials,
   PasswordEntry,
   PasswordPatch,
+  PasswordUsageStats,
   TokenMethod,
   UnlockRequirement,
   VaultClient
@@ -41,6 +44,8 @@ const AUTHORIZED_USERNAME_KEY = "authorizedUsername"
 const AUTHORIZED_APP_PASSWORD_KEY = "authorizedAppPassword"
 const AUTHORIZED_SETTING_KEYS = [AUTHORIZED_SERVER_KEY, AUTHORIZED_USERNAME_KEY, AUTHORIZED_APP_PASSWORD_KEY] as const
 const LEGACY_SETTING_KEYS = ["username", "appPassword"] as const
+const USAGE_STATS_KEY = "usageStats"
+const MAX_USAGE_ENTRIES = 500
 
 export class NextcloudPasswordsPlugin implements Plugin {
   private api!: PublicAPI
@@ -98,7 +103,8 @@ export class NextcloudPasswordsPlugin implements Plugin {
         return { Results: [await this.buildUnlockResult(ctx, this.unlockRequirement)] }
       }
 
-      const passwords = filterPasswords(await this.client.listPasswords(), query.Search)
+      const usageStats = await this.loadUsageStats(ctx)
+      const passwords = filterPasswords(await this.client.listPasswords(), query.Search, 50, usageStats)
       const results = await Promise.all(passwords.map((entry) => this.buildPasswordResult(ctx, entry)))
       if (results.length === 0) {
         results.push({
@@ -390,13 +396,31 @@ export class NextcloudPasswordsPlugin implements Plugin {
 
   private async buildPasswordResult(ctx: Context, entry: PasswordEntry): Promise<Result> {
     const resultId = `nextcloud-password-${entry.id}`
+    return {
+      Id: resultId,
+      Title: entry.label,
+      SubTitle: [entry.username, entry.url].filter(Boolean).join(" · ") || (await this.t(ctx, "no_username_or_url")),
+      Icon: PASSWORD_ICON,
+      Preview: await this.buildPreview(ctx, entry, false),
+      Tails: this.buildTails(entry),
+      Actions: await this.buildPasswordActions(ctx, entry, false)
+    }
+  }
+
+  // Rebuild visibility-dependent actions together with the preview toggle state.
+  private async buildPasswordActions(
+    ctx: Context,
+    entry: PasswordEntry,
+    revealed: boolean
+  ): Promise<Result["Actions"]> {
+    const resultId = `nextcloud-password-${entry.id}`
     const actions: Result["Actions"] = [
       {
         Id: `copy-password-${entry.id}`,
         Name: "i18n:copy_password",
         Icon: COPY_ICON,
         IsDefault: true,
-        Action: async (actionCtx) => this.copy(actionCtx, entry.password, "password_copied")
+        Action: async (actionCtx) => this.copyPassword(actionCtx, entry)
       },
       {
         Id: `copy-username-${entry.id}`,
@@ -405,19 +429,28 @@ export class NextcloudPasswordsPlugin implements Plugin {
         Action: async (actionCtx) => this.copy(actionCtx, entry.username, "username_copied")
       },
       {
-        Id: `reveal-details-${entry.id}`,
-        Name: "i18n:reveal_details",
-        Icon: DETAIL_ICON,
+        Id: `toggle-password-visibility-${entry.id}`,
+        Name: revealed ? "i18n:hide_password" : "i18n:show_password",
+        Icon: revealed ? HIDE_ICON : DETAIL_ICON,
         PreventHideAfterAction: true,
         Action: async (actionCtx) => {
+          const nextRevealed = !revealed
           await this.api.UpdateResult(actionCtx, {
             Id: resultId,
-            Preview: await this.buildPreview(actionCtx, entry, true)
+            Preview: await this.buildPreview(actionCtx, entry, nextRevealed),
+            Actions: await this.buildPasswordActions(actionCtx, entry, nextRevealed)
           })
         }
       }
     ]
     if (entry.editable) {
+      actions.push({
+        Id: `toggle-pin-${entry.id}`,
+        Name: entry.favorite ? "i18n:unpin_password" : "i18n:pin_password",
+        Icon: PIN_ICON,
+        PreventHideAfterAction: true,
+        Action: async (actionCtx) => this.toggleFavorite(actionCtx, entry)
+      })
       actions.push({
         Id: `edit-password-${entry.id}`,
         Type: "form",
@@ -428,16 +461,7 @@ export class NextcloudPasswordsPlugin implements Plugin {
         OnSubmit: async (actionCtx, formCtx) => this.updatePassword(actionCtx, entry, formCtx)
       })
     }
-
-    return {
-      Id: resultId,
-      Title: entry.label,
-      SubTitle: [entry.username, entry.url].filter(Boolean).join(" · ") || (await this.t(ctx, "no_username_or_url")),
-      Icon: PASSWORD_ICON,
-      Preview: await this.buildPreview(ctx, entry, false),
-      Tails: this.buildTails(entry),
-      Actions: actions
-    }
+    return actions
   }
 
   private async buildPreview(ctx: Context, entry: PasswordEntry, reveal: boolean) {
@@ -503,6 +527,65 @@ export class NextcloudPasswordsPlugin implements Plugin {
       await this.logError(ctx, "Password update failed", error)
       await this.api.Notify(ctx, await this.errorMessage(ctx, error))
     }
+  }
+
+  // Sync an explicit pin to Nextcloud and refresh the result order.
+  private async toggleFavorite(ctx: Context, entry: PasswordEntry): Promise<void> {
+    try {
+      await this.client.setFavorite(entry.id, !entry.favorite)
+      await this.api.Notify(ctx, await this.t(ctx, entry.favorite ? "unpin_success" : "pin_success"))
+      await this.api.RefreshQuery(ctx, { PreserveSelectedIndex: true })
+    } catch (error) {
+      await this.logError(ctx, "Favorite update failed", error)
+      await this.api.Notify(ctx, await this.errorMessage(ctx, error))
+    }
+  }
+
+  // Count successful password copies as usage without exposing the password in settings.
+  private async copyPassword(ctx: Context, entry: PasswordEntry): Promise<void> {
+    if (!entry.password) {
+      await this.api.Notify(ctx, await this.t(ctx, "nothing_to_copy"))
+      return
+    }
+    await this.api.Copy(ctx, { type: "text", text: entry.password })
+    await this.recordUsage(ctx, entry.id)
+    await this.api.Notify(ctx, await this.t(ctx, "password_copied"))
+  }
+
+  // Treat malformed or older local usage data as empty instead of failing password search.
+  private async loadUsageStats(ctx: Context): Promise<PasswordUsageStats> {
+    const raw = await this.api.GetSetting(ctx, USAGE_STATS_KEY)
+    if (!raw) return {}
+    try {
+      const parsed: unknown = JSON.parse(raw)
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {}
+
+      const stats: PasswordUsageStats = {}
+      for (const [id, value] of Object.entries(parsed)) {
+        if (!value || typeof value !== "object" || Array.isArray(value)) continue
+        const count = (value as { count?: unknown }).count
+        const lastUsed = (value as { lastUsed?: unknown }).lastUsed
+        if (typeof count !== "number" || !Number.isFinite(count) || count < 0) continue
+        if (typeof lastUsed !== "number" || !Number.isFinite(lastUsed) || lastUsed < 0) continue
+        stats[id] = { count: Math.floor(count), lastUsed }
+      }
+      return stats
+    } catch {
+      return {}
+    }
+  }
+
+  // Bound device-local history so stale vault entries cannot grow settings indefinitely.
+  private async recordUsage(ctx: Context, id: string): Promise<void> {
+    const stats = await this.loadUsageStats(ctx)
+    const current = stats[id] || { count: 0, lastUsed: 0 }
+    stats[id] = { count: current.count + 1, lastUsed: Date.now() }
+    const trimmed = Object.fromEntries(
+      Object.entries(stats)
+        .sort((left, right) => right[1].lastUsed - left[1].lastUsed)
+        .slice(0, MAX_USAGE_ENTRIES)
+    )
+    await this.api.SaveSetting(ctx, USAGE_STATS_KEY, JSON.stringify(trimmed), true)
   }
 
   private async copy(ctx: Context, value: string, translationKey: string): Promise<void> {

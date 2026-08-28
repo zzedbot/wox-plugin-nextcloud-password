@@ -59,6 +59,34 @@ test("supports mixed literal and pinyin terms without changing direct-match prio
   )
 })
 
+test("pins favorites first and ranks other entries by frequency then recency", () => {
+  const entries = [
+    entry({ id: "recent", label: "Recent" }),
+    entry({ id: "frequent", label: "Frequent" }),
+    entry({ id: "pinned", label: "Pinned", favorite: true })
+  ]
+  const usage = {
+    frequent: { count: 5, lastUsed: 100 },
+    pinned: { count: 0, lastUsed: 0 },
+    recent: { count: 2, lastUsed: 200 }
+  }
+
+  assert.deepEqual(
+    filterPasswords(entries, "", 50, usage).map((item) => item.id),
+    ["pinned", "frequent", "recent"]
+  )
+})
+
+test("keeps search relevance ahead of local usage for unpinned entries", () => {
+  const entries = [entry({ id: "exact", label: "GitHub" }), entry({ id: "used", label: "Code", username: "GitHub" })]
+  const usage = { used: { count: 100, lastUsed: 200 } }
+
+  assert.deepEqual(
+    filterPasswords(entries, "github", 50, usage).map((item) => item.id),
+    ["exact", "used"]
+  )
+})
+
 test("normalizes a Nextcloud base URL and rejects HTTP", () => {
   assert.equal(normalizeBaseUrl("https://cloud.example.com/nextcloud"), "https://cloud.example.com/nextcloud/")
   assert.throws(() => normalizeBaseUrl("http://cloud.example.com"), /HTTPS/)

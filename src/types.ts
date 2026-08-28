@@ -46,6 +46,13 @@ export interface PasswordPatch {
   username: string
 }
 
+export interface PasswordUsage {
+  count: number
+  lastUsed: number
+}
+
+export type PasswordUsageStats = Record<string, PasswordUsage>
+
 export interface TokenMethod {
   description: string
   id: string
@@ -62,6 +69,7 @@ export interface VaultClient {
   connect(settings: ConnectionSettings): Promise<UnlockRequirement | null>
   disconnect(): void
   listPasswords(forceRefresh?: boolean): Promise<PasswordEntry[]>
+  setFavorite(id: string, favorite: boolean): Promise<PasswordEntry>
   unlock(masterPassword: string, tokenMethodId?: string, tokenValue?: string): Promise<void>
   updatePassword(id: string, patch: PasswordPatch): Promise<PasswordEntry>
 }

@@ -85,6 +85,11 @@ test("opens a Passwords API session, lists entries, and updates the latest model
     assert.equal(updateRequest?.body?.label, "GitHub Work")
     assert.equal(updateRequest?.body?.password, "new-secret")
     assert.equal(updateRequest?.body?.cseType, "none")
+
+    const unpinned = await client.setFavorite(passwordId, false)
+    assert.equal(unpinned.favorite, false)
+    const favoriteRequest = requests.filter((request) => request.url.endsWith("/1.0/password/update")).at(-1)
+    assert.equal(favoriteRequest?.body?.favorite, false)
     client.disconnect()
   } finally {
     globalThis.fetch = originalFetch

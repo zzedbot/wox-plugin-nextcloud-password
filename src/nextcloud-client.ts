@@ -27,7 +27,7 @@ export class NextcloudVaultClient implements VaultClient {
       },
       {
         defaultEncryption: "auto",
-        userAgent: "Wox Nextcloud Passwords/0.3.0"
+        userAgent: "Wox Nextcloud Passwords/0.4.0"
       }
     )
     this.repository = this.client.getPasswordRepository()
@@ -99,6 +99,18 @@ export class NextcloudVaultClient implements VaultClient {
       model.setEdited(new Date())
     }
 
+    const updated = await repository.update(model)
+    this.cache = null
+    return toPasswordEntry(updated)
+  }
+
+  // Persist the pin state through the Passwords app's cross-device favorite field.
+  async setFavorite(id: string, favorite: boolean): Promise<PasswordEntry> {
+    const repository = this.requireRepository()
+    const model = await repository.findById(id, "model")
+    if (!model.getEditable()) throw new Error("This password is read-only")
+
+    model.setFavorite(favorite)
     const updated = await repository.update(model)
     this.cache = null
     return toPasswordEntry(updated)

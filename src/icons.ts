@@ -12,7 +12,9 @@ export const DETAIL_ICON = icon(
   "M7 24s6-10 17-10 17 10 17 10-6 10-17 10S7 24 7 24Zm17 4a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z",
   "#20bf6b"
 )
+export const HIDE_ICON = icon("M7 24s6-10 17-10c4 0 7 1 10 3m7 7s-6 10-17 10c-4 0-7-1-10-3M10 10l28 28", "#778ca3")
 export const EDIT_ICON = icon("M11 35l2-8L30 10l8 8-17 17-8 2 2-8m12-16 8 8", "#f7b731")
+export const PIN_ICON = icon("M16 11h16l-3 10 5 5H14l5-5zM24 26v12", "#f7b731")
 export const UNLOCK_ICON = icon("M14 22v-5a10 10 0 0 1 18-6M12 22h24v18H12z", "#eb3b5a")
 export const CONNECT_ICON = icon("M17 15v-4m14 4v-4M14 15h20v7a10 10 0 0 1-20 0zM24 32v6", "#20bf6b")
 export const DISCONNECT_ICON = icon("M17 15v-4m14 4v-4M14 15h20v5M13 35l22-22", "#eb3b5a")

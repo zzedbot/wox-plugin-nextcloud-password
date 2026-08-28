@@ -1,6 +1,6 @@
 import { match } from "pinyin-pro"
 
-import { PasswordEntry } from "./types.js"
+import { PasswordEntry, PasswordUsageStats } from "./types.js"
 
 const normalize = (value: string): string => value.normalize("NFKC").toLocaleLowerCase()
 const containsHan = (value: string): boolean => /\p{Script=Han}/u.test(value)
@@ -16,7 +16,7 @@ export function scorePassword(entry: PasswordEntry, search: string): number {
     .filter((term) => term.length > 0)
 
   if (terms.length === 0) {
-    return entry.favorite ? 90 : 60
+    return 60
   }
 
   const label = normalize(entry.label)
@@ -30,7 +30,7 @@ export function scorePassword(entry: PasswordEntry, search: string): number {
     return -1
   }
 
-  let score = entry.favorite ? 8 : 0
+  let score = 0
   for (const term of terms) {
     if (label === term) score += 50
     else if (label.startsWith(term)) score += 35
@@ -44,11 +44,26 @@ export function scorePassword(entry: PasswordEntry, search: string): number {
   return Math.min(100, score)
 }
 
-export function filterPasswords(entries: PasswordEntry[], search: string, limit = 50): PasswordEntry[] {
+export function filterPasswords(
+  entries: PasswordEntry[],
+  search: string,
+  limit = 50,
+  usageStats: PasswordUsageStats = {}
+): PasswordEntry[] {
+  const hasSearch = normalize(search).trim().length > 0
   return entries
     .map((entry) => ({ entry, score: scorePassword(entry, search) }))
     .filter(({ score }) => score >= 0)
-    .sort((left, right) => right.score - left.score || left.entry.label.localeCompare(right.entry.label))
+    .sort((left, right) => {
+      if (left.entry.favorite !== right.entry.favorite) return left.entry.favorite ? -1 : 1
+      const leftUsage = usageStats[left.entry.id] ?? { count: 0, lastUsed: 0 }
+      const rightUsage = usageStats[right.entry.id] ?? { count: 0, lastUsed: 0 }
+      if (hasSearch && left.score !== right.score) return right.score - left.score
+      if (leftUsage.count !== rightUsage.count) return rightUsage.count - leftUsage.count
+      if (leftUsage.lastUsed !== rightUsage.lastUsed) return rightUsage.lastUsed - leftUsage.lastUsed
+      if (!hasSearch && left.score !== right.score) return right.score - left.score
+      return left.entry.label.localeCompare(right.entry.label)
+    })
     .slice(0, limit)
     .map(({ entry }) => entry)
 }

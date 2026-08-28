@@ -23,6 +23,9 @@ test("keeps lifecycle methods bound when the Node.js host invokes them as standa
     connect: async () => null,
     disconnect: () => undefined,
     listPasswords: async () => [],
+    setFavorite: async () => {
+      throw new Error("Not used")
+    },
     unlock: async () => undefined,
     updatePassword: async () => {
       throw new Error("Not used")
@@ -38,27 +41,33 @@ test("keeps lifecycle methods bound when the Node.js host invokes them as standa
 
 test("uses entry-specific action IDs and copies the selected password", async () => {
   const copied: string[] = []
+  const settings: Record<string, string> = {
+    authorizedAppPassword: "app-password",
+    authorizedServer: "https://cloud.example.com/",
+    authorizedUsername: "alice",
+    baseUrl: "https://cloud.example.com"
+  }
   const api = {
     Copy: async (_ctx: Context, value: { text: string }) => {
       copied.push(value.text)
     },
-    GetSetting: async (_ctx: Context, key: string) =>
-      ({
-        authorizedAppPassword: "app-password",
-        authorizedServer: "https://cloud.example.com/",
-        authorizedUsername: "alice",
-        baseUrl: "https://cloud.example.com"
-      })[key] || "",
+    GetSetting: async (_ctx: Context, key: string) => settings[key] || "",
     GetTranslation: async (_ctx: Context, key: string) => key,
     Log: async () => undefined,
     Notify: async () => undefined,
     OnSettingChanged: async () => undefined,
-    OnUnload: async () => undefined
+    OnUnload: async () => undefined,
+    SaveSetting: async (_ctx: Context, key: string, value: string) => {
+      settings[key] = value
+    }
   } as unknown as PublicAPI
   const client = {
     connect: async () => null,
     disconnect: () => undefined,
     listPasswords: async () => [passwordEntry("first", "first-secret"), passwordEntry("second", "second-secret")],
+    setFavorite: async () => {
+      throw new Error("Not used")
+    },
     unlock: async () => undefined,
     updatePassword: async () => {
       throw new Error("Not used")
@@ -82,6 +91,85 @@ test("uses entry-specific action IDs and copies the selected password", async ()
   await firstAction.Action?.(ctx, {} as ActionContext)
   await secondAction.Action?.(ctx, {} as ActionContext)
   assert.deepEqual(copied, ["first-secret", "second-secret"])
+  const usageStats = JSON.parse(settings.usageStats || "{}") as Record<string, { count: number }>
+  assert.equal(usageStats.first?.count, 1)
+  assert.equal(usageStats.second?.count, 1)
+})
+
+test("toggles password visibility and syncs pinning through Nextcloud favorites", async () => {
+  const settings: Record<string, string> = {
+    authorizedAppPassword: "app-password",
+    authorizedServer: "https://cloud.example.com/",
+    authorizedUsername: "alice",
+    baseUrl: "https://cloud.example.com"
+  }
+  const updates: Array<Record<string, unknown>> = []
+  const favoriteChanges: boolean[] = []
+  let refreshed = false
+  const api = {
+    GetSetting: async (_ctx: Context, key: string) => settings[key] || "",
+    GetTranslation: async (_ctx: Context, key: string) => key,
+    Log: async () => undefined,
+    Notify: async () => undefined,
+    OnSettingChanged: async () => undefined,
+    OnUnload: async () => undefined,
+    RefreshQuery: async () => {
+      refreshed = true
+    },
+    UpdateResult: async (_ctx: Context, result: Record<string, unknown>) => {
+      updates.push(result)
+      return true
+    }
+  } as unknown as PublicAPI
+  const item = passwordEntry("secret", "visible-secret")
+  const client = {
+    connect: async () => null,
+    disconnect: () => undefined,
+    listPasswords: async () => [item],
+    setFavorite: async (_id: string, favorite: boolean) => {
+      favoriteChanges.push(favorite)
+      return { ...item, favorite }
+    },
+    unlock: async () => undefined,
+    updatePassword: async () => {
+      throw new Error("Not used")
+    }
+  } satisfies VaultClient
+  const instance = new NextcloudPasswordsPlugin(client)
+  const ctx = {} as Context
+  await instance.init(ctx, { API: api, PluginDirectory: "C:/plugin" } as PluginInitParams)
+
+  const response = await instance.query(ctx, { Search: "" } as never)
+  const result = response.Results[0]
+  assert.ok(result)
+  const hiddenPreview = JSON.parse(result.Preview?.PreviewData || "{}") as {
+    items: Array<{ title: string; subtitle: string }>
+  }
+  assert.notEqual(hiddenPreview.items.find((value) => value.title === "password")?.subtitle, "visible-secret")
+
+  const showAction = result.Actions?.find((action) => action.Id === "toggle-password-visibility-secret")
+  assert.ok(showAction && showAction.Type !== "form")
+  assert.equal(showAction.Name, "i18n:show_password")
+  await showAction.Action?.(ctx, {} as ActionContext)
+
+  const shown = updates.at(-1) as { Actions: typeof result.Actions; Preview: { PreviewData: string } }
+  const shownPreview = JSON.parse(shown.Preview.PreviewData) as { items: Array<{ title: string; subtitle: string }> }
+  assert.equal(shownPreview.items.find((value) => value.title === "password")?.subtitle, "visible-secret")
+  const hideAction = shown.Actions?.find((action) => action.Id === "toggle-password-visibility-secret")
+  assert.ok(hideAction && hideAction.Type !== "form")
+  assert.equal(hideAction.Name, "i18n:hide_password")
+  await hideAction.Action?.(ctx, {} as ActionContext)
+  const hiddenAgain = updates.at(-1) as { Preview: { PreviewData: string } }
+  const hiddenAgainPreview = JSON.parse(hiddenAgain.Preview.PreviewData) as {
+    items: Array<{ title: string; subtitle: string }>
+  }
+  assert.notEqual(hiddenAgainPreview.items.find((value) => value.title === "password")?.subtitle, "visible-secret")
+
+  const pinAction = result.Actions?.find((action) => action.Id === "toggle-pin-secret")
+  assert.ok(pinAction && pinAction.Type !== "form")
+  await pinAction.Action?.(ctx, {} as ActionContext)
+  assert.deepEqual(favoriteChanges, [true])
+  assert.equal(refreshed, true)
 })
 
 test("authorizes through Login Flow v2, stores device credentials, and revokes them on disconnect", async () => {
@@ -177,6 +265,9 @@ function stubVaultClient(): VaultClient {
     connect: async () => null,
     disconnect: () => undefined,
     listPasswords: async () => [],
+    setFavorite: async () => {
+      throw new Error("Not used")
+    },
     unlock: async () => undefined,
     updatePassword: async () => {
       throw new Error("Not used")

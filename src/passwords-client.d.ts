@@ -45,6 +45,7 @@ declare module "passwords-client" {
     getUrl(): string
     getUserName(): string
     setEdited(value: Date): PasswordModel
+    setFavorite(value: boolean): PasswordModel
     setLabel(value: string): PasswordModel
     setNotes(value: string): PasswordModel
     setPassword(value: string): PasswordModel
