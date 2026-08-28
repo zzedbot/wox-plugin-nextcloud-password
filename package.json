@@ -1,0 +1,31 @@
+{
+  "name": "wox-plugin-nextcloud-passwords",
+  "version": "0.3.0",
+  "description": "Search and manage Nextcloud Passwords from Wox",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check": "pnpm format:check && pnpm typecheck && pnpm test && pnpm build && pnpm verify:bundle",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "package": "pnpm build && node scripts/package.mjs",
+    "test": "tsx --test src/**/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "verify:bundle": "node scripts/verify-bundle.mjs"
+  },
+  "dependencies": {
+    "@wox-launcher/wox-plugin": "^0.0.133",
+    "open": "^11.0.1",
+    "passwords-client": "1.0.0-beta.5974",
+    "pinyin-pro": "^3.29.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "@vercel/ncc": "^0.38.3",
+    "bestzip": "^2.2.1",
+    "prettier": "^3.6.2",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  },
+  "packageManager": "pnpm@11.19.0"
+}
