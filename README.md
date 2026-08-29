@@ -2,6 +2,8 @@
 
 Search, inspect, copy, and update entries from the [Nextcloud Passwords](https://apps.nextcloud.com/apps/passwords) app without leaving Wox.
 
+![Nextcloud Passwords search and preview](preview.png)
+
 ## Features
 
 - Type `ncp <search>` to search labels, usernames, and URLs locally after the encrypted vault is loaded. Chinese labels and usernames support full-pinyin, initials, partial-syllable, and mixed literal/pinyin matching.
