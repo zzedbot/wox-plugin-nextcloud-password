@@ -8,6 +8,11 @@ const icon = (path: string, background = "#7454d6"): WoxImage => ({
 export const PASSWORD_ICON = icon("M29 18a8 8 0 1 0-6.2 7.8L26 29h5v5h5v-5l-7-7M15 18h.1")
 export const COPY_ICON = icon("M18 15h16v20H18zM14 31h-2V11h16v2", "#3867d6")
 export const USER_ICON = icon("M24 24a7 7 0 1 0 0-14 7 7 0 0 0 0 14Zm-12 14c1-7 5-10 12-10s11 3 12 10", "#2d98da")
+export const OPEN_ICON: WoxImage = {
+  ImageType: "svg",
+  ImageData:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><path fill="#0f518c" d="M30 30H2V2h15v4H6v20h20V15h4z"/><path fill="#ed0049" d="M19 2v4h4.172l-8.586 8.586 2.828 2.828L26 8.828V13h4V2z"/></svg>'
+}
 export const DETAIL_ICON = icon(
   "M7 24s6-10 17-10 17 10 17 10-6 10-17 10S7 24 7 24Zm17 4a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z",
   "#20bf6b"

@@ -11,6 +11,7 @@ Search, inspect, copy, and update entries from the [Nextcloud Passwords](https:/
 - Automatically rank entries by local copy frequency and most recent use. Search relevance still takes priority while typing.
 - Pin or unpin editable entries. Pinning uses the Nextcloud Passwords favorite field and syncs across devices.
 - Copy the username from the result action menu.
+- Open the entry URL in the default browser. Bare domains such as `example.com/login` use HTTPS automatically.
 - Inspect username, URL, notes, security status, and a masked password in the preview panel.
 - Toggle the password between masked and plaintext display in the preview. Every new query starts hidden.
 - Edit label, username, password, URL, and notes. Updates retain the entry's existing encryption mode and use the latest server revision.

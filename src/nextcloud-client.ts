@@ -27,7 +27,7 @@ export class NextcloudVaultClient implements VaultClient {
       },
       {
         defaultEncryption: "auto",
-        userAgent: "Wox Nextcloud Passwords/0.4.0"
+        userAgent: "Wox Nextcloud Passwords/0.5.0"
       }
     )
     this.repository = this.client.getPasswordRepository()

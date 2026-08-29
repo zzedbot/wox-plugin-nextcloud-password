@@ -3,7 +3,7 @@ import test from "node:test"
 
 import { ActionContext, Context, PluginInitParams, PublicAPI } from "@wox-launcher/wox-plugin"
 
-import { NextcloudPasswordsPlugin } from "./plugin.js"
+import { NextcloudPasswordsPlugin, normalizeEntryUrl } from "./plugin.js"
 import { BrowserLauncher, LoginFlowClient, VaultClient } from "./types.js"
 
 test("keeps lifecycle methods bound when the Node.js host invokes them as standalone functions", async () => {
@@ -170,6 +170,59 @@ test("toggles password visibility and syncs pinning through Nextcloud favorites"
   await pinAction.Action?.(ctx, {} as ActionContext)
   assert.deepEqual(favoriteChanges, [true])
   assert.equal(refreshed, true)
+})
+
+test("opens valid entry URLs in the default browser and rejects unsafe schemes", async () => {
+  const opened: string[] = []
+  let hidden = false
+  const api = {
+    GetSetting: async (_ctx: Context, key: string) =>
+      ({
+        authorizedAppPassword: "app-password",
+        authorizedServer: "https://cloud.example.com/",
+        authorizedUsername: "alice",
+        baseUrl: "https://cloud.example.com"
+      })[key] || "",
+    GetTranslation: async (_ctx: Context, key: string) => key,
+    HideApp: async () => {
+      hidden = true
+    },
+    Log: async () => undefined,
+    Notify: async () => undefined,
+    OnSettingChanged: async () => undefined,
+    OnUnload: async () => undefined
+  } as unknown as PublicAPI
+  const item = { ...passwordEntry("website", "secret"), url: "example.com/login" }
+  const client = {
+    connect: async () => null,
+    disconnect: () => undefined,
+    listPasswords: async () => [item],
+    setFavorite: async () => {
+      throw new Error("Not used")
+    },
+    unlock: async () => undefined,
+    updatePassword: async () => {
+      throw new Error("Not used")
+    }
+  } satisfies VaultClient
+  const browser = {
+    open: async (url: string) => {
+      opened.push(url)
+    }
+  } satisfies BrowserLauncher
+  const instance = new NextcloudPasswordsPlugin(client, undefined, browser)
+  const ctx = {} as Context
+  await instance.init(ctx, { API: api, PluginDirectory: "C:/plugin" } as PluginInitParams)
+
+  const response = await instance.query(ctx, { Search: "" } as never)
+  const openAction = response.Results[0]?.Actions?.find((action) => action.Id === "open-url-website")
+  assert.ok(openAction && openAction.Type !== "form")
+  await openAction.Action?.(ctx, {} as ActionContext)
+
+  assert.deepEqual(opened, ["https://example.com/login"])
+  assert.equal(hidden, true)
+  assert.equal(normalizeEntryUrl("javascript:alert(1)"), null)
+  assert.equal(normalizeEntryUrl(""), null)
 })
 
 test("authorizes through Login Flow v2, stores device credentials, and revokes them on disconnect", async () => {

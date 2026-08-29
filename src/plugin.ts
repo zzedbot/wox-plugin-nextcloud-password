@@ -18,6 +18,7 @@ import {
   DISCONNECT_ICON,
   EDIT_ICON,
   HIDE_ICON,
+  OPEN_ICON,
   PASSWORD_ICON,
   PIN_ICON,
   UNLOCK_ICON,
@@ -414,6 +415,7 @@ export class NextcloudPasswordsPlugin implements Plugin {
     revealed: boolean
   ): Promise<Result["Actions"]> {
     const resultId = `nextcloud-password-${entry.id}`
+    const entryUrl = normalizeEntryUrl(entry.url)
     const actions: Result["Actions"] = [
       {
         Id: `copy-password-${entry.id}`,
@@ -443,6 +445,14 @@ export class NextcloudPasswordsPlugin implements Plugin {
         }
       }
     ]
+    if (entryUrl) {
+      actions.splice(2, 0, {
+        Id: `open-url-${entry.id}`,
+        Name: "i18n:open_url",
+        Icon: OPEN_ICON,
+        Action: async (actionCtx) => this.openPasswordUrl(actionCtx, entryUrl)
+      })
+    }
     if (entry.editable) {
       actions.push({
         Id: `toggle-pin-${entry.id}`,
@@ -538,6 +548,17 @@ export class NextcloudPasswordsPlugin implements Plugin {
     } catch (error) {
       await this.logError(ctx, "Favorite update failed", error)
       await this.api.Notify(ctx, await this.errorMessage(ctx, error))
+    }
+  }
+
+  // Open only normalized HTTP(S) entry URLs in the user's default browser.
+  private async openPasswordUrl(ctx: Context, url: string): Promise<void> {
+    try {
+      await this.browser.open(url)
+      await this.api.HideApp(ctx)
+    } catch (error) {
+      await this.logError(ctx, "URL open failed", error)
+      await this.api.Notify(ctx, await this.t(ctx, "open_url_failed"))
     }
   }
 
@@ -676,4 +697,18 @@ export class NextcloudPasswordsPlugin implements Plugin {
 
 function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError"
+}
+
+// Add HTTPS to common bare domains and reject non-web URL schemes.
+export function normalizeEntryUrl(value: string): string | null {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const candidate = /^[a-z][a-z\d+.-]*:/i.test(trimmed) ? trimmed : `https://${trimmed}`
+  try {
+    const parsed = new URL(candidate)
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null
+    return parsed.href
+  } catch {
+    return null
+  }
 }
